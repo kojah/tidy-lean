@@ -61,6 +61,7 @@ class VerbArgument(MacroStandardArgsParser):
 def context():
     result = lw.get_default_latex_context_db()
     macros = [MacroSpec(name, '{' * count) for name, count in EVIDENCE_ARGS.items()]
+    macros.append(MacroSpec('paperexpr', '{{'))
     macros.append(MacroSpec('verb', args_parser=VerbArgument()))
     environments = [EnvironmentSpec(name, '[') for name in SEMANTIC_ENVS]
     environments += [EnvironmentSpec(name + star, '', is_math_mode=True)

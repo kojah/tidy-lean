@@ -49,6 +49,26 @@ class MathTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(items['math:x']['lean'], ['Proof.good', 'Proof.other'])
 
+    def test_publication_display_keeps_evidence_and_fingerprint(self):
+        source = r'\mathlink{math:x}{thm:x}\paperexpr{key}{\[x=y\]}' + self.owner()
+        first, errors = self.scan(source)
+        self.assertEqual(errors, [])
+        self.assertEqual(first['math:x']['lean'], ['Proof.good'])
+        for altered in [source.replace('x=y', 'x=z'), source.replace('{key}', '{other}')]:
+            items, errors = self.scan(altered)
+            self.assertEqual(errors, [])
+            self.assertNotEqual(first['math:x']['tex'], items['math:x']['tex'])
+
+    def test_publication_wrapper_does_not_supply_or_extend_evidence(self):
+        marker = r'\mathclass{math:x}{obligation}{coverage}'
+        for source in [r'\paperexpr{key}{\[x\]}',
+                       marker + r'prose\paperexpr{key}{\[x\]}',
+                       marker + r'\paperexpr{key}{\[x\]\[y\]}',
+                       marker + r'\paperexpr{key}{prose\[x\]}']:
+            with self.subTest(source=source):
+                _, errors = self.scan(source)
+                self.assertTrue(any('unlinked display' in e for e in errors), errors)
+
     def test_broken_unproved_and_circular_links_fail(self):
         for target, owner in [('missing', ''), ('thm:x', self.owner(r'\notlean{open}')),
                               ('math:x', '')]:

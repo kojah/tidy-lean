@@ -6,6 +6,20 @@ from paper_latex import contains, is_semantic, is_display
 KINDS = {'definition', 'illustrative', 'obligation', 'unmechanized'}
 
 
+def display_container(doc, block):
+    """A publication wrapper moves adjacency, but never supplies evidence itself."""
+    for wrapper in doc.macros('paperexpr'):
+        args = wrapper.nodeargd.argnlist if wrapper.nodeargd else []
+        if len(args) != 2 or any(getattr(arg, 'delimiters', None) != ('{', '}') for arg in args):
+            continue
+        body = args[1]
+        if (contains(body, block) and
+                not doc.canonical(body.pos + 1, block.pos).strip() and
+                not doc.canonical(block.pos + block.len, body.pos + body.len - 1).strip()):
+            return wrapper
+    return block
+
+
 def collect_math(sources, items, digest):
     errors, pending = [], []
     formal_items = dict(items)
@@ -15,9 +29,10 @@ def collect_math(sources, items, digest):
         used = set()
         for block in filter(is_display, doc.all_nodes()):
             where = doc.where(block)
+            container = display_container(doc, block)
             adjacent = [index for index, marker in enumerate(markers)
-                        if marker.pos+marker.len <= block.pos and
-                        not doc.canonical(marker.pos+marker.len, block.pos).strip()]
+                        if marker.pos+marker.len <= container.pos and
+                        not doc.canonical(marker.pos+marker.len, container.pos).strip()]
             if any(contains(owner, block) for owner in owners):
                 if adjacent:
                     errors.append(f'{where}: inherited display must not override enclosing evidence')
@@ -42,7 +57,7 @@ def collect_math(sources, items, digest):
                 errors.append(f'{where}: duplicate result label {label}')
                 continue
             item = dict(where=where, kind='display', lean=[], notlean=None, classification=None,
-                        tex=digest(doc.canonical(marker.pos, block.pos+block.len)))
+                        tex=digest(doc.canonical(marker.pos, container.pos+container.len)))
             items[label] = item
             if marker.macroname == 'mathlink':
                 pending.append((item, [name.strip() for name in args[1].split(',')]))
