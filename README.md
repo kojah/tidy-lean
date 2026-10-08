@@ -33,7 +33,14 @@ private declarations and generated helpers participate in the dependency graph.
 Lean's `.ilean` source indexes identify authored declarations and add resolved
 source references, including explicit tactic arguments that disappear from
 compiled proof terms. Generated projections, constructors and extensionality
-lemmas remain graph intermediates, rather than separate pruning units.
+lemmas remain graph intermediates, rather than separate pruning units. Explicit
+mutual inductives are also recognized from Lean declaration ranges, since the
+source-index declaration table may omit secondary members of a mutual group.
+`Orphans.lean` owns mark-and-sweep, orphan classification, incoming-dependent
+counts and retention diagnostics. Python supplies compiled/source-index metadata
+and manuscript roots, invokes Lean with JSON, and renders the resulting report;
+there is no Python graph-traversal fallback.
+
 Authored declarations outside the resulting closure are errors. Importing a
 module alone does not connect its declarations to either paper. Missing, stale
 or unsupported source indexes fail the audit; rebuild with `lake build`.
@@ -97,3 +104,10 @@ PAPER_CHECK_LEAN_TESTS=1 bash /home/james/.local/bin/agent-test \
 Reachability shows that a declaration supports a retained root. It does not
 prove that a paper claim is complete, correctly stated, or faithfully connected
 to the native analyzer.
+
+The graph fixtures run through the same native Lean pass as production. Enable
+`PAPER_CHECK_LEAN_TESTS=1` and set `TIDYLEAN_PROJECT_ROOT` to a built consuming
+project when running the full suite. The default Python-only suite checks
+parsing, source-index enrichment and subprocess transport without requiring Lean.
+A process failure or malformed native result fails the audit; it cannot silently
+produce an empty orphan list.

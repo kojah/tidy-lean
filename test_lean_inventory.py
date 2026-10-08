@@ -30,6 +30,13 @@ theorem orphan : True := True.intro
 def unused_definition : Nat := 0
 structure UnusedStructure where
   field : Nat
+mutual
+inductive First where
+  | fromSecond : Second → First
+inductive Second where
+  | base
+  | fromFirst : First → Second
+end
 @[ext] structure UsedStructure where
   field : Nat
 theorem uses_structure (s : UsedStructure) : s.field = s.field := rfl
@@ -71,6 +78,8 @@ end OrphanFixture
             self.assertIn('OrphanFixture.erased_helper', report['paper_connected'])
             self.assertIn('OrphanFixture.unused_definition', report['orphaned_declarations'])
             self.assertIn('OrphanFixture.UnusedStructure', report['orphaned_declarations'])
+            self.assertIn('OrphanFixture.First', report['orphaned_declarations'])
+            self.assertIn('OrphanFixture.Second', report['orphaned_declarations'])
             self.assertEqual(report['declaration_kinds']['OrphanFixture.UnusedStructure'], 'structure')
             self.assertNotIn('OrphanFixture.UsedStructure', report['orphaned_declarations'])
             self.assertNotIn('OrphanFixture.UsedStructure.ext', report['orphaned_declarations'])

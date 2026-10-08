@@ -46,6 +46,8 @@ elab "#paper_inventory" : command => do
       ("kind", toJson (if ci.isThm then "theorem" else if isStructure env name then "structure"
         else if ci.isInductive then "inductive" else "definition")),
       ("dependencies", toJson dependencies),
+      ("declared_inductive", toJson (ci.isInductive && ranges.isSome &&
+        !(privateToUserName name).isInternalDetail)),
       ("proof", toJson (ci.isThm && ranges.isSome && !(privateToUserName name).isInternalDetail)),
       ("line", toJson ((ranges.map fun r => r.range.pos.line).getD 0))]
     logInfo m!"@@NODE {record.compress}"

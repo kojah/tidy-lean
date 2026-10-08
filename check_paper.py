@@ -135,7 +135,7 @@ def main():
     from paper_orphans import audit, source_modules
     standalone_path = Path(PROOFS, 'check', 'orphan-roots.json')
     standalone = json.loads(standalone_path.read_text()) if standalone_path.exists() else {}
-    orphan_report = audit(nodes, modules, names, source_modules(PROOFS), standalone)
+    orphan_report = audit(nodes, modules, names, source_modules(PROOFS), standalone, proofs=PROOFS, lake=LAKE)
     problems.extend(orphan_report['errors'])
     if a.orphan_report:
         a.orphan_report.write_text(json.dumps(orphan_report, indent=2) + '\n')
