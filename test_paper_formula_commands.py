@@ -51,6 +51,20 @@ class FormulaCommandTests(unittest.TestCase):
         _, errors = self.collect(r'\paperexpr[layout=display]{expression}')
         self.assertTrue(any('unlinked display' in error for error in errors), errors)
 
+    def test_literal_lean_source_does_not_create_tex_items(self):
+        source = (r'\begin{leancontext}{(x : Nat)}'
+                  r'\leanexpr|"\begin{theorem}$x$ % fake"|\end{leancontext}')
+        items, errors = self.collect(source)
+        self.assertEqual((items, errors), ({}, []))
+        source = (r'\begin{leancontext}{(x : Nat)}'
+                  r'\mathclass{math:direct}{definition}{Typed expression}'
+                  r'\leanexpr[layout=display]{{n : Nat | n % 2 = 0}}\end{leancontext}')
+        items, errors = self.collect(source)
+        self.assertEqual(errors, [])
+        self.assertEqual(items['math:direct']['classification']['kind'], 'definition')
+        _, errors = self.collect(source.replace(r'\mathclass{math:direct}{definition}{Typed expression}', ''))
+        self.assertTrue(any('unlinked display' in error for error in errors))
+
 
 if __name__ == '__main__':
     unittest.main()

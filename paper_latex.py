@@ -14,6 +14,8 @@ except ModuleNotFoundError as error:
     raise SystemExit('Paper checker dependencies are missing. Install tidy-lean/requirements.txt '
                      'or run with uv run --with-requirements tidy-lean/requirements.txt python.') from error
 
+from paper_lean_syntax import LeanArgument
+
 SEMANTIC_ENVS = ('definition', 'lemma', 'proposition', 'theorem', 'corollary',
                  'contract', 'obligation', 'proposal', 'paperclaim')
 DISPLAY_ENVS = ('equation', 'align', 'alignat', 'gather', 'multline', 'displaymath', 'eqnarray', 'flalign')
@@ -61,9 +63,11 @@ class VerbArgument(MacroStandardArgsParser):
 def context():
     result = lw.get_default_latex_context_db()
     macros = [MacroSpec(name, '{' * count) for name, count in EVIDENCE_ARGS.items()]
-    macros += [MacroSpec('paperexpr', '[{'), MacroSpec('leanformula', '[{')]
+    macros += [MacroSpec('paperexpr', '[{'), MacroSpec('leanformula', '[{'),
+               MacroSpec('leanexpr', args_parser=LeanArgument())]
     macros.append(MacroSpec('verb', args_parser=VerbArgument()))
     environments = [EnvironmentSpec(name, '[') for name in SEMANTIC_ENVS]
+    environments.append(EnvironmentSpec('leancontext', args_parser=LeanArgument()))
     environments += [EnvironmentSpec(name + star, '', is_math_mode=True)
                      for name in DISPLAY_ENVS for star in ('', '*')]
     environments += [EnvironmentSpec(name, args_parser=LiteralBody(name)) for name in LITERAL_ENVS]

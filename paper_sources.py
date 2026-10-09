@@ -48,7 +48,7 @@ def included_sources(entry):
             continue
         doc = parse(path.read_text(), path.resolve())
         problems.extend(doc.errors)
-        if any(is_semantic(n) or is_display(n) or getattr(n, 'macroname', None) == 'leanformula'
+        if any(is_semantic(n) or is_display(n) or getattr(n, 'macroname', None) in ('leanformula', 'leanexpr', 'paperexpr')
                for n in doc.all_nodes()):
             problems.append(f'{path}: semantic items in a file omitted from manuscript')
     return sources, problems

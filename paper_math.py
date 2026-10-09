@@ -28,7 +28,7 @@ def display_nodes(doc):
     result = list(filter(is_display, doc.all_nodes()))
     containers = {display_container(doc, block).pos for block in result}
     markers = [node for name in ('mathlink', 'mathclass') for node in doc.macros(name)]
-    for node in doc.macros('paperexpr'):
+    for node in doc.macros('paperexpr') + doc.macros('leanexpr'):
         if node.pos in containers:
             continue
         args = node.nodeargd.argnlist
