@@ -64,7 +64,8 @@ def context():
     result = lw.get_default_latex_context_db()
     macros = [MacroSpec(name, '{' * count) for name, count in EVIDENCE_ARGS.items()]
     macros += [MacroSpec('paperexpr', '[{'), MacroSpec('leanformula', '[{'),
-               MacroSpec('leanexpr', args_parser=LeanArgument())]
+               MacroSpec('leanexpr', args_parser=LeanArgument()),
+               MacroSpec('leanname', args_parser=LeanArgument())]
     macros.append(MacroSpec('verb', args_parser=VerbArgument()))
     environments = [EnvironmentSpec(name, '[') for name in SEMANTIC_ENVS]
     environments.append(EnvironmentSpec('leancontext', args_parser=LeanArgument()))

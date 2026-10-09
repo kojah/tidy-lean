@@ -56,6 +56,8 @@ class FormulaCommandTests(unittest.TestCase):
                   r'\leanexpr|"\begin{theorem}$x$ % fake"|\end{leancontext}')
         items, errors = self.collect(source)
         self.assertEqual((items, errors), ({}, []))
+        items, errors = self.collect(source.replace('leanexpr', 'leanname[η]'))
+        self.assertEqual((items, errors), ({}, []))
         source = (r'\begin{leancontext}{(x : Nat)}'
                   r'\mathclass{math:direct}{definition}{Typed expression}'
                   r'\leanexpr[layout=display]{{n : Nat | n % 2 = 0}}\end{leancontext}')
