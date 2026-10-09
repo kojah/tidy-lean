@@ -3,6 +3,7 @@ from pathlib import Path
 
 from paper_latex import parse, is_semantic, is_display
 from paper_math import collect_math, coverage_report
+from paper_formula_commands import collect_formulas
 
 STATUS_KINDS = {'definition': 'definition', 'contract': 'obligation',
                 'obligation': 'obligation', 'proposal': 'proposal'}
@@ -47,7 +48,8 @@ def included_sources(entry):
             continue
         doc = parse(path.read_text(), path.resolve())
         problems.extend(doc.errors)
-        if any(is_semantic(n) or is_display(n) for n in doc.all_nodes()):
+        if any(is_semantic(n) or is_display(n) or getattr(n, 'macroname', None) == 'leanformula'
+               for n in doc.all_nodes()):
             problems.append(f'{path}: semantic items in a file omitted from manuscript')
     return sources, problems
 
@@ -59,6 +61,7 @@ def collect(entries, digest):
         all_sources.extend(sources)
         problems.extend(errors)
         for doc in sources:
+            problems.extend(collect_formulas(doc, out, digest))
             for node in filter(is_semantic, doc.all_nodes()):
                 kind, where = node.environmentname, doc.where(node)
                 try:

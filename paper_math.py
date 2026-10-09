@@ -1,5 +1,6 @@
 """Evidence rules for display nodes supplied by the LaTeX syntax tree."""
 import re
+from types import SimpleNamespace
 
 from paper_latex import contains, is_semantic, is_display
 
@@ -7,17 +8,37 @@ KINDS = {'definition', 'illustrative', 'obligation', 'unmechanized'}
 
 
 def display_container(doc, block):
-    """A publication wrapper moves adjacency, but never supplies evidence itself."""
+    """Retain compatibility with an old cached-text argument around one display."""
+    if not is_display(block):
+        return block
     for wrapper in doc.macros('paperexpr'):
-        args = wrapper.nodeargd.argnlist if wrapper.nodeargd else []
-        if len(args) != 2 or any(getattr(arg, 'delimiters', None) != ('{', '}') for arg in args):
-            continue
-        body = args[1]
-        if (contains(body, block) and
-                not doc.canonical(body.pos + 1, block.pos).strip() and
-                not doc.canonical(block.pos + block.len, body.pos + body.len - 1).strip()):
-            return wrapper
+        for body in doc.all_nodes():
+            if getattr(body, 'delimiters', None) != ('{', '}') or body.pos < wrapper.pos + wrapper.len:
+                continue
+            if doc.canonical(wrapper.pos + wrapper.len, body.pos).strip():
+                continue
+            if (contains(body, block) and
+                    not doc.canonical(body.pos + 1, block.pos).strip() and
+                    not doc.canonical(block.pos + block.len, body.pos + body.len - 1).strip()):
+                return SimpleNamespace(pos=wrapper.pos, len=body.pos+body.len-wrapper.pos)
     return block
+
+
+def display_nodes(doc):
+    result = list(filter(is_display, doc.all_nodes()))
+    containers = {display_container(doc, block).pos for block in result}
+    markers = [node for name in ('mathlink', 'mathclass') for node in doc.macros(name)]
+    for node in doc.macros('paperexpr'):
+        if node.pos in containers:
+            continue
+        args = node.nodeargd.argnlist
+        option = args[0] if args else None
+        displayed = option is not None and doc.canonical(option.pos+1, option.pos+option.len-1).strip() == 'layout=display'
+        adjacent = any(marker.pos+marker.len <= node.pos and
+                       not doc.canonical(marker.pos+marker.len, node.pos).strip() for marker in markers)
+        if displayed or adjacent:
+            result.append(node)
+    return result
 
 
 def collect_math(sources, items, digest):
@@ -27,7 +48,7 @@ def collect_math(sources, items, digest):
         owners = list(filter(is_semantic, doc.all_nodes()))
         markers = [node for name in ('mathlink', 'mathclass') for node in doc.macros(name)]
         used = set()
-        for block in filter(is_display, doc.all_nodes()):
+        for block in display_nodes(doc):
             where = doc.where(block)
             container = display_container(doc, block)
             adjacent = [index for index, marker in enumerate(markers)
@@ -88,7 +109,7 @@ def coverage_report(sources, items):
     report = []
     for doc in sources:
         owners = list(filter(is_semantic, doc.all_nodes()))
-        for block in filter(is_display, doc.all_nodes()):
+        for block in display_nodes(doc):
             where = doc.where(block)
             label, item = standalone.get(where, ('', None))
             inherited = False
