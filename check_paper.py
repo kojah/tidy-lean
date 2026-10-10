@@ -43,10 +43,40 @@ def digest(text):
     return hashlib.sha256(' '.join(text.split()).encode()).hexdigest()[:16]
 
 
+def manuscript_fingerprint():
+    """Every manuscript source and the checker's own code: what the paper
+    side of a run depends on."""
+    root = Path(PROOFS).parent / 'paper'
+    parts = []
+    for path in sorted(root.rglob('*.tex')):
+        parts.append(str(path.relative_to(root)) + '\0' + path.read_text())
+    for path in sorted(Path(HERE).glob('*.py')):
+        parts.append(path.read_text())
+    return hashlib.sha256('\n'.join(parts).encode()).hexdigest()
+
+
+def cached_json(name, key, compute):
+    """A JSON-serializable result under proofs/.lake/paper-check/NAME, by key."""
+    cache_dir = Path(PROOFS, '.lake', 'paper-check', name)
+    cached = cache_dir / (key + '.json')
+    if cached.is_file():
+        return json.loads(cached.read_text())
+    value = compute()
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for stale in cache_dir.glob('*.json'):
+            stale.unlink()
+        cached.write_text(json.dumps(value))
+    except OSError:
+        pass  # no proof workspace to cache in, as in the tests
+    return value
+
+
 def paper_results():
     from paper_sources import collect
     root = Path(PROOFS).parent / 'paper'
-    return collect([root / 'lockdoctor/deadlock.tex', root / 'heap-analysis/heap.tex'], digest)
+    return cached_json('results', manuscript_fingerprint(),
+                       lambda: collect([root / 'lockdoctor/deadlock.tex', root / 'heap-analysis/heap.tex'], digest))
 
 
 def proofs_fingerprint():
@@ -55,7 +85,8 @@ def proofs_fingerprint():
     root = Path(PROOFS, '.lake', 'build', 'lib', 'lean')
     manifest = Path(PROOFS, 'lake-manifest.json')
     parts = [manifest.read_text() if manifest.is_file() else '']
-    for path in sorted(root.rglob('*.olean')) if root.is_dir() else []:
+    compiled = sorted(list(root.rglob('*.olean')) + list(root.rglob('*.ilean'))) if root.is_dir() else []
+    for path in compiled:
         st = path.stat()
         parts.append(f'{path.relative_to(root)} {st.st_size} {st.st_mtime_ns}')
     return hashlib.sha256('\n'.join(parts).encode()).hexdigest()
@@ -88,16 +119,20 @@ def lean_probe(source):
     return text, run.returncode
 
 
+def probe_source(names, inventory):
+    dump = Path(HERE, 'Dump.lean').read_text().replace('import Lean\n', '')
+    source = 'import DeadlockProofs\n' + dump + '\n#paper_dump ' + ' '.join(sorted(names)) + '\n'
+    if inventory:
+        source += '#paper_inventory\n'
+    return source
+
+
 def lean_facts(names, inventory=False):
     """Each Lean declaration's kind, location, axioms and statement."""
     if not names and not inventory:
         return {}
-    dump = Path(HERE, 'Dump.lean').read_text().replace('import Lean\n', '')
     os.makedirs(os.path.join(PROOFS, '.lake'), exist_ok=True)
-    source = 'import DeadlockProofs\n' + dump + '\n#paper_dump ' + ' '.join(sorted(names)) + '\n'
-    if inventory:
-        source += '#paper_inventory\n'
-    text, returncode = lean_probe(source)
+    text, returncode = lean_probe(probe_source(names, inventory))
     facts = {}
     for m in re.finditer(r'@@MISSING (\S+)', text):
         facts[m.group(1)] = None
@@ -168,11 +203,27 @@ def main():
     paper_latex.CACHE_DIR = os.path.join(PROOFS, '.lake', 'paper-check', 'latex')
     results, problems = paper_results()
     names = {n for r in results.values() for n in r['lean']}
-    facts, (modules, nodes) = lean_facts(names, inventory=True)
     from paper_orphans import audit, source_modules
     standalone_path = Path(PROOFS, 'check', 'orphan-roots.json')
     standalone = json.loads(standalone_path.read_text()) if standalone_path.exists() else {}
-    orphan_report = audit(nodes, modules, names, source_modules(PROOFS), standalone, proofs=PROOFS, lake=LAKE)
+    # The facts and the orphan report are functions of the compiled proofs,
+    # the cited names and the audit's inputs: a run that changes none of
+    # them reads both back without opening the probe's output.
+    facts_key = hashlib.sha256((proofs_fingerprint() + '\0' + probe_source(names, True)).encode()).hexdigest()
+    sources = source_modules(PROOFS)
+    orphan_key = hashlib.sha256((facts_key + Path(HERE, 'Orphans.lean').read_text() + json.dumps(
+        [sorted(names), sorted(sources), standalone], sort_keys=True)).encode()).hexdigest()
+    probed = []
+
+    def probe():
+        if not probed:
+            probed.append(lean_facts(names, inventory=True))
+        return probed[0]
+
+    facts = cached_json('facts', facts_key, lambda: probe()[0])
+    orphan_report = cached_json('orphans', orphan_key,
+                                lambda: audit(probe()[1][1], probe()[1][0], names, sources, standalone,
+                                              proofs=PROOFS, lake=LAKE))
     problems.extend(orphan_report['errors'])
     if a.orphan_report:
         a.orphan_report.write_text(json.dumps(orphan_report, indent=2) + '\n')
@@ -231,8 +282,8 @@ def main():
 
     from paper_sources import review_receipts, review_errors
     base = Path(PROOFS).parent
-    current_reviews = review_receipts([base / 'paper/lockdoctor/deadlock.tex',
-                                      base / 'paper/heap-analysis/heap.tex'], base, digest)
+    current_reviews = cached_json('reviews', manuscript_fingerprint(), lambda: review_receipts(
+        [base / 'paper/lockdoctor/deadlock.tex', base / 'paper/heap-analysis/heap.tex'], base, digest))
     recorded_reviews = json.load(open(REVIEW)) if os.path.exists(REVIEW) else {}
     if a.review:
         if problems:

@@ -23,25 +23,7 @@ def audit(nodes, modules, paper_roots, source_modules, exceptions=None, *, proof
                           for node in nodes.values()], modules=sorted(modules),
                    paper_roots=sorted(paper_roots), source_modules=sorted(source_modules),
                    exceptions={} if exceptions is None else exceptions)
-    # The report is a function of the payload and the audit program, so a
-    # repeated audit of the same inventory reads the previous report.
-    import hashlib
-    audit_source = Path(__file__).with_name('Orphans.lean').read_text()
-    toolchain = Path(proofs, 'lean-toolchain').read_text() if Path(proofs, 'lean-toolchain').is_file() else ''
-    key = hashlib.sha256((audit_source + toolchain + json.dumps(payload, sort_keys=True)).encode()).hexdigest()
-    cache_dir = Path(proofs, '.lake', 'paper-check', 'orphans')
-    cached = cache_dir / (key + '.json')
-    if cached.is_file():
-        return json.loads(cached.read_text())
-    report = run_audit(payload, proofs, lake)
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        for stale in cache_dir.glob('*.json'):
-            stale.unlink()
-        cached.write_text(json.dumps(report))
-    except OSError:
-        pass  # no proof workspace to cache in, as in the tests
-    return report
+    return run_audit(payload, proofs, lake)
 
 
 def run_audit(payload, proofs, lake):
