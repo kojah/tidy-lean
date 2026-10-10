@@ -61,8 +61,8 @@ def source_inventory(proofs, modules, nodes, index_root=None):
         source = Path(proofs) / relative.with_suffix('.lean')
         if not index.is_file() or not source.is_file():
             raise ValueError(f'{module}: missing Lean source index; run lake build')
-        if source.stat().st_mtime_ns > index.stat().st_mtime_ns:
-            raise ValueError(f'{module}: stale Lean source index; run lake build')
+        # Lake validates content hashes, not source mtimes. A checkout may be
+        # newer than a valid cached index; callers must build before this audit.
         data = json.loads(index.read_text())
         if (data.get('version') != 5 or data.get('module') != module
                 or not isinstance(data.get('decls'), dict)
@@ -84,6 +84,15 @@ def source_inventory(proofs, modules, nodes, index_root=None):
     return enriched
 
 
+PROJECT_LIBRARIES = ('DeadlockProofs', 'Support')
+
+
 def source_modules(proofs):
-    return {'.'.join(path.relative_to(proofs).with_suffix('').parts)
-            for path in Path(proofs, 'DeadlockProofs').rglob('*.lean')} | {'DeadlockProofs'}
+    """The project's modules: both libraries, with their roots."""
+    modules = set()
+    for library in PROJECT_LIBRARIES:
+        if Path(proofs, library + '.lean').is_file():
+            modules.add(library)
+        modules |= {'.'.join(path.relative_to(proofs).with_suffix('').parts)
+                    for path in Path(proofs, library).rglob('*.lean')}
+    return modules

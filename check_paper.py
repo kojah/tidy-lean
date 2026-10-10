@@ -135,11 +135,17 @@ def probe_source(names, inventory):
 
 def module_graph():
     """The project's modules, each with the project modules it imports."""
+    from paper_orphans import PROJECT_LIBRARIES
     root = Path(PROOFS)
     graph = {}
-    for path in list(Path(root, 'DeadlockProofs').rglob('*.lean')) + [Path(root, 'DeadlockProofs.lean')]:
-        module = '.'.join(path.relative_to(root).with_suffix('').parts)
-        graph[module] = re.findall(r'^import (DeadlockProofs\S*)', path.read_text(), re.M)
+    for library in PROJECT_LIBRARIES:
+        paths = list(Path(root, library).rglob('*.lean')) + [Path(root, library + '.lean')]
+        for path in paths:
+            if not path.is_file():
+                continue
+            module = '.'.join(path.relative_to(root).with_suffix('').parts)
+            graph[module] = re.findall(r'^import ((?:' + '|'.join(PROJECT_LIBRARIES) + r')\S*)',
+                                       path.read_text(), re.M)
     return graph
 
 
@@ -283,7 +289,8 @@ def lean_fingerprint(fact):
 def cited_labels():
     """Paper labels cited as '(paper LABEL)' in Lean docstrings, by label."""
     cited = {}
-    for root, _, files in os.walk(os.path.join(PROOFS, 'DeadlockProofs')):
+    from paper_orphans import PROJECT_LIBRARIES
+    for root, _, files in (entry for library in PROJECT_LIBRARIES for entry in os.walk(os.path.join(PROOFS, library))):
         for f in files:
             if f.endswith('.lean'):
                 for m in re.finditer(r'\(paper (' + LABEL_RE + r')\)', open(os.path.join(root, f)).read()):
