@@ -4,8 +4,10 @@ pylatexenc parses nesting, arguments, comments and math. This adapter registers
 our vocabulary and suppresses traversal of declarations/literal bodies. It does
 not expand macros or evaluate TeX conditionals.
 """
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 
 try:
     from pylatexenc import latexwalker as lw
@@ -117,13 +119,19 @@ class Document:
     nodes: list
     walker: object
     errors: list
+    # The syntax tree is fixed once parsed: the node list and the masked
+    # text (canonical) are computed once and reused by every query.
+    _all: list = field(default=None, repr=False, compare=False)
+    _masked: str = field(default=None, repr=False, compare=False)
 
     def where(self, node):
         pos = node if isinstance(node, int) else node.pos
         return f'{self.path}:{self.text.count(chr(10), 0, pos)+1}:{pos-self.text.rfind(chr(10), 0, pos)}'
 
     def all_nodes(self):
-        return list(walk(self.nodes))
+        if self._all is None:
+            self._all = list(walk(self.nodes))
+        return self._all
 
     def macros(self, name, nodes=None):
         return [n for n in walk(self.nodes if nodes is None else nodes)
@@ -137,20 +145,27 @@ class Document:
             raise ValueError(f'{self.where(node)}: {node.macroname} needs {count} braced argument(s)')
         return [self.canonical(arg.pos+1, arg.pos+arg.len-1).strip() for arg in args]
 
+    def masked(self):
+        """The text with comments blanked and literal examples escaped, one
+        character for one, so that every slice of it is the canonical form
+        of that slice of the source."""
+        if self._masked is None:
+            masked = list(self.text)
+            for node in self.all_nodes():
+                lo, hi = node.pos, node.pos+node.len
+                if isinstance(node, lw.LatexCommentNode):
+                    # Comment post-space may contain a newline; keep source positions.
+                    masked[lo:hi] = ['\n' if c == '\n' else ' ' for c in self.text[lo:hi]]
+                elif literal(node):
+                    masked[lo:hi] = self.text[lo:hi].replace('\\', '⌿').replace('%', '％').replace('$', '＄')
+            self._masked = ''.join(masked)
+        return self._masked
+
     def canonical(self, start=0, end=None, omit=()):
         """Source-based fingerprints: ignore comments, retain literal examples."""
         if end is None:
             end = len(self.text)
-        masked = list(self.text[start:end])
-        for node in self.all_nodes():
-            lo, hi = max(start, node.pos), min(end, node.pos+node.len)
-            if hi <= lo:
-                continue
-            if isinstance(node, lw.LatexCommentNode):
-                # Comment post-space may contain a newline; keep source positions.
-                masked[lo-start:hi-start] = ['\n' if c == '\n' else ' ' for c in self.text[lo:hi]]
-            elif literal(node):
-                masked[lo-start:hi-start] = self.text[lo:hi].replace('\\', '⌿').replace('%', '％').replace('$', '＄')
+        masked = list(self.masked()[start:end])
         for node in omit:
             lo, hi = max(start, node.pos), min(end, node.pos+node.len)
             if hi > lo:
@@ -166,8 +181,41 @@ class Document:
         return self.canonical(start, end, omit)
 
 
+# A directory for parsed documents, set by a caller that may reuse them
+# across runs (check_paper.py): a document depends only on its text and on
+# this parser, so one is read back rather than parsed again while neither
+# changes.
+CACHE_DIR = None
+
+
+def _cache_key(text, path):
+    import hashlib
+    salt = Path(__file__).read_text() + getattr(lw, '__version__', '') + str(path)
+    return hashlib.sha256((salt + '\0' + text).encode()).hexdigest()
+
+
 @lru_cache(maxsize=256)
 def parse(text, path):
+    if CACHE_DIR is None:
+        return parse_fresh(text, path)
+    import pickle
+    cached = Path(CACHE_DIR) / (_cache_key(text, path) + '.pkl')
+    if cached.is_file():
+        try:
+            return pickle.loads(cached.read_bytes())
+        except Exception:  # a stale or truncated pickle is parsed again
+            pass
+    doc = parse_fresh(text, path)
+    doc.all_nodes()
+    doc.masked()
+    Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
+    temporary = cached.with_suffix('.tmp%d' % os.getpid())
+    temporary.write_bytes(pickle.dumps(doc, protocol=pickle.HIGHEST_PROTOCOL))
+    temporary.replace(cached)
+    return doc
+
+
+def parse_fresh(text, path):
     walker = lw.LatexWalker(text, latex_context=context(), tolerant_parsing=False)
     try:
         nodes, pos, length = walker.get_latex_nodes(pos=0)

@@ -33,7 +33,9 @@ elab "#paper_inventory" : command => do
   let env ← getEnv
   let modules := env.header.moduleNames.filter fun name =>
     name.toString == "DeadlockProofs" || name.toString.startsWith "DeadlockProofs."
-  logInfo m!"@@INVENTORY_BEGIN {Json.compress (toJson (modules.map Name.toString))}"
+  -- Printed directly: six megabytes through the message log took ten
+  -- seconds more than through standard output.
+  IO.println s!"@@INVENTORY_BEGIN {Json.compress (toJson (modules.map Name.toString))}"
   for (name, ci) in env.constants.toList do
     let some index := env.getModuleIdxFor? name | continue
     let moduleName := env.header.moduleNames[index.toNat]!
@@ -50,5 +52,5 @@ elab "#paper_inventory" : command => do
         !(privateToUserName name).isInternalDetail)),
       ("proof", toJson (ci.isThm && ranges.isSome && !(privateToUserName name).isInternalDetail)),
       ("line", toJson ((ranges.map fun r => r.range.pos.line).getD 0))]
-    logInfo m!"@@NODE {record.compress}"
-  logInfo m!"@@INVENTORY_END"
+    IO.println s!"@@NODE {record.compress}"
+  IO.println "@@INVENTORY_END"

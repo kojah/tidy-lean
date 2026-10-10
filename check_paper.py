@@ -49,20 +49,55 @@ def paper_results():
     return collect([root / 'lockdoctor/deadlock.tex', root / 'heap-analysis/heap.tex'], digest)
 
 
+def proofs_fingerprint():
+    """The compiled proofs the Lean probe reads: every olean's path, size
+    and modification time, and the dependency manifest."""
+    root = Path(PROOFS, '.lake', 'build', 'lib', 'lean')
+    manifest = Path(PROOFS, 'lake-manifest.json')
+    parts = [manifest.read_text() if manifest.is_file() else '']
+    for path in sorted(root.rglob('*.olean')) if root.is_dir() else []:
+        st = path.stat()
+        parts.append(f'{path.relative_to(root)} {st.st_size} {st.st_mtime_ns}')
+    return hashlib.sha256('\n'.join(parts).encode()).hexdigest()
+
+
+def lean_probe(source):
+    """Run a Lean probe over the compiled proofs and return its output. The
+    output depends only on the probe and the compiled proofs, so it is
+    cached by both: a run after a change to the manuscript alone reads the
+    cache instead of dumping every declaration again."""
+    cache_dir = Path(PROOFS, '.lake', 'paper-check')
+    key = hashlib.sha256((proofs_fingerprint() + '\0' + source).encode()).hexdigest()
+    cached = cache_dir / (key + '.txt')
+    if cached.is_file():
+        return cached.read_text(), 0
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        cache_dir = None  # no proof workspace to cache in, as in the tests
+    # Concurrent checkers must not replace each other's Lean probe.
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.lean', dir=os.path.join(PROOFS, '.lake')) as probe:
+        probe.write(source)
+        probe.flush()
+        run = subprocess.run([LAKE, 'env', 'lean', probe.name], cwd=PROOFS, capture_output=True, text=True)
+    text = run.stdout + run.stderr
+    if run.returncode == 0 and cache_dir is not None:
+        for stale in cache_dir.glob('*.txt'):
+            stale.unlink()
+        cached.write_text(text)
+    return text, run.returncode
+
+
 def lean_facts(names, inventory=False):
     """Each Lean declaration's kind, location, axioms and statement."""
     if not names and not inventory:
         return {}
     dump = Path(HERE, 'Dump.lean').read_text().replace('import Lean\n', '')
     os.makedirs(os.path.join(PROOFS, '.lake'), exist_ok=True)
-    # Concurrent checkers must not replace each other's Lean probe.
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.lean', dir=os.path.join(PROOFS, '.lake')) as probe:
-        probe.write('import DeadlockProofs\n' + dump + '\n#paper_dump ' + ' '.join(sorted(names)) + '\n')
-        if inventory:
-            probe.write('#paper_inventory\n')
-        probe.flush()
-        run = subprocess.run([LAKE, 'env', 'lean', probe.name], cwd=PROOFS, capture_output=True, text=True)
-    text = run.stdout + run.stderr
+    source = 'import DeadlockProofs\n' + dump + '\n#paper_dump ' + ' '.join(sorted(names)) + '\n'
+    if inventory:
+        source += '#paper_inventory\n'
+    text, returncode = lean_probe(source)
     facts = {}
     for m in re.finditer(r'@@MISSING (\S+)', text):
         facts[m.group(1)] = None
@@ -70,7 +105,7 @@ def lean_facts(names, inventory=False):
         name, kind, module, lines, axioms, ty = m.groups()
         facts[name] = {'kind': kind, 'module': module, 'lines': lines,
                        'axioms': [a.strip() for a in axioms.split(',') if a.strip()], 'type': ty}
-    if run.returncode != 0:
+    if returncode != 0:
         sys.exit('lean failed:\n' + text[-2000:])
     if inventory:
         from paper_orphans import parse_inventory, source_inventory
@@ -129,6 +164,8 @@ def main():
     if a.review and not (a.review_note or '').strip():
         ap.error('--review requires --review-note')
 
+    import paper_latex
+    paper_latex.CACHE_DIR = os.path.join(PROOFS, '.lake', 'paper-check', 'latex')
     results, problems = paper_results()
     names = {n for r in results.values() for n in r['lean']}
     facts, (modules, nodes) = lean_facts(names, inventory=True)
