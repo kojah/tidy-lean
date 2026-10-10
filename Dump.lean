@@ -29,10 +29,13 @@ elab "#paper_dump " ns:ident* : command => do
 
 /- The dependency inventory includes definition and proof bodies, not just
 theorem statements. Generated declarations remain graph intermediates. -/
-elab "#paper_inventory" : command => do
+elab "#paper_inventory" ms:ident* : command => do
   let env ← getEnv
+  -- With module names, only those modules; the checker caches the rest.
+  let wanted := ms.map (·.getId)
   let modules := env.header.moduleNames.filter fun name =>
-    name.toString == "DeadlockProofs" || name.toString.startsWith "DeadlockProofs."
+    if wanted.isEmpty then name.toString == "DeadlockProofs" || name.toString.startsWith "DeadlockProofs."
+    else wanted.contains name
   -- Printed directly: six megabytes through the message log took ten
   -- seconds more than through standard output.
   IO.println s!"@@INVENTORY_BEGIN {Json.compress (toJson (modules.map Name.toString))}"

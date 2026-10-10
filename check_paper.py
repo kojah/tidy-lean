@@ -120,11 +120,123 @@ def lean_probe(source):
 
 
 def probe_source(names, inventory):
+    """The probe dumping names and, with inventory, the inventory of every
+    project module (True) or of the modules listed."""
     dump = Path(HERE, 'Dump.lean').read_text().replace('import Lean\n', '')
-    source = 'import DeadlockProofs\n' + dump + '\n#paper_dump ' + ' '.join(sorted(names)) + '\n'
-    if inventory:
+    source = 'import DeadlockProofs\n' + dump + '\n'
+    if names:
+        source += '#paper_dump ' + ' '.join(sorted(names)) + '\n'
+    if inventory is True:
         source += '#paper_inventory\n'
+    elif inventory:
+        source += '#paper_inventory ' + ' '.join(sorted(inventory)) + '\n'
     return source
+
+
+def module_graph():
+    """The project's modules, each with the project modules it imports."""
+    root = Path(PROOFS)
+    graph = {}
+    for path in list(Path(root, 'DeadlockProofs').rglob('*.lean')) + [Path(root, 'DeadlockProofs.lean')]:
+        module = '.'.join(path.relative_to(root).with_suffix('').parts)
+        graph[module] = re.findall(r'^import (DeadlockProofs\S*)', path.read_text(), re.M)
+    return graph
+
+
+def module_stamp(module):
+    """The compiled module: its olean and ilean's size and modification time."""
+    parts = []
+    for suffix in ('.olean', '.ilean'):
+        path = Path(PROOFS, '.lake', 'build', 'lib', 'lean', *module.split('.')).with_suffix(suffix)
+        st = path.stat() if path.is_file() else None
+        parts.append(f'{st.st_size} {st.st_mtime_ns}' if st else 'missing')
+    return ' '.join(parts)
+
+
+def closure_stamps(graph):
+    """Per module, a digest of its stamp and its imports' closure: what a
+    declaration's facts, its axioms included, depend on."""
+    own = {module: module_stamp(module) for module in graph}
+    manifest = Path(PROOFS, 'lake-manifest.json')
+    salt = manifest.read_text() if manifest.is_file() else ''
+    closure = {}
+
+    def visit(module, trail=()):
+        if module in closure:
+            return closure[module]
+        if module in trail or module not in graph:
+            return ''
+        parts = [own[module]] + sorted(visit(imported, trail + (module,)) for imported in graph[module])
+        closure[module] = hashlib.sha256((salt + '\n'.join(parts)).encode()).hexdigest()
+        return closure[module]
+
+    for module in graph:
+        visit(module)
+    return own, closure
+
+
+def facts_and_inventory(names):
+    """The facts of the cited names and the project's declaration inventory,
+    from per-module caches under proofs/.lake/paper-check/modules, with one
+    Lean probe for the modules whose compiled form changed and the names not
+    yet placed in a module. A module's inventory depends on its own olean;
+    its declarations' facts on its imports' closure as well."""
+    from paper_orphans import parse_inventory, source_inventory
+    graph = module_graph()
+    own, closure = closure_stamps(graph)
+    base = Path(PROOFS, '.lake', 'paper-check', 'modules')
+    placed = cached_read(base / 'names.json') or {}
+    facts, nodes = {}, {}
+    stale_modules, missing_names = set(), set()
+    for module in graph:
+        entry = cached_read(base / 'inventory' / (module + '.json'))
+        if entry and entry.get('key') == hashlib.sha256(own[module].encode()).hexdigest():
+            nodes.update(entry['nodes'])
+        else:
+            stale_modules.add(module)
+    for name in names:
+        module = placed.get(name)
+        entry = cached_read(base / 'facts' / (module + '.json')) if module else None
+        if entry and entry.get('key') == closure.get(module) and name in entry['facts']:
+            facts[name] = entry['facts'][name]
+        else:
+            missing_names.add(name)
+    if stale_modules or missing_names:
+        fresh = lean_facts(missing_names, inventory=stale_modules or None)
+        fresh_facts, (_, fresh_nodes) = fresh if stale_modules else (fresh, (None, {}))
+        facts.update(fresh_facts)
+        nodes.update(fresh_nodes)
+        by_module = {}
+        for name, fact in fresh_facts.items():
+            if fact is not None:
+                placed[name] = fact['module']
+                by_module.setdefault(fact['module'], {})[name] = fact
+        for module, fresh_of in by_module.items():
+            entry = cached_read(base / 'facts' / (module + '.json')) or {}
+            kept = entry.get('facts', {}) if entry.get('key') == closure.get(module) else {}
+            cached_write(base / 'facts' / (module + '.json'), {'key': closure.get(module), 'facts': {**kept, **fresh_of}})
+        for module in stale_modules:
+            cached_write(base / 'inventory' / (module + '.json'),
+                         {'key': hashlib.sha256(own[module].encode()).hexdigest(),
+                          'nodes': {n: node for n, node in fresh_nodes.items() if node['module'] == module}})
+        cached_write(base / 'names.json', placed)
+    modules = {module for module in graph if own[module] != 'missing missing'}
+    return facts, (modules, source_inventory(PROOFS, modules, nodes))
+
+
+def cached_read(path):
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def cached_write(path, value):
+    try:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(json.dumps(value))
+    except OSError:
+        pass  # no proof workspace to cache in, as in the tests
 
 
 def lean_facts(names, inventory=False):
@@ -143,9 +255,8 @@ def lean_facts(names, inventory=False):
     if returncode != 0:
         sys.exit('lean failed:\n' + text[-2000:])
     if inventory:
-        from paper_orphans import parse_inventory, source_inventory
-        modules, nodes = parse_inventory(text)
-        return facts, (modules, source_inventory(PROOFS, modules, nodes))
+        from paper_orphans import parse_inventory
+        return facts, parse_inventory(text)  # raw nodes; facts_and_inventory adds the source references
     return facts
 
 
@@ -217,7 +328,7 @@ def main():
 
     def probe():
         if not probed:
-            probed.append(lean_facts(names, inventory=True))
+            probed.append(facts_and_inventory(names))
         return probed[0]
 
     facts = cached_json('facts', facts_key, lambda: probe()[0])
