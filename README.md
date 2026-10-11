@@ -42,8 +42,9 @@ and manuscript roots, invokes Lean with JSON, and renders the resulting report;
 there is no Python graph-traversal fallback.
 
 Authored declarations outside the resulting closure are errors. Importing a
-module alone does not connect its declarations to either paper. Missing, stale
-or unsupported source indexes fail the audit; rebuild with `lake build`.
+module alone does not connect its declarations to either paper. Missing or
+unsupported source indexes fail the audit. Run `lake build` first to validate
+the source/index content hashes; timestamps alone cannot certify freshness.
 Project source modules not imported by `DeadlockProofs` are reported separately:
 the checker cannot certify their proof inventory from the imported environment.
 External library declarations are not orphan candidates.

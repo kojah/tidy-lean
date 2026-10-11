@@ -106,9 +106,6 @@ class OrphanTests(unittest.TestCase):
             index.write_text(json.dumps(data))
             with self.assertRaisesRegex(ValueError, 'missing from environment'):
                 source_inventory(root, {module}, nodes, root)
-            os.utime(source, ns=(index.stat().st_mtime_ns + 1, index.stat().st_mtime_ns + 1))
-            with self.assertRaisesRegex(ValueError, 'stale'):
-                source_inventory(root, {module}, nodes, root)
             source.unlink()
             with self.assertRaisesRegex(ValueError, 'missing'):
                 source_inventory(root, {module}, nodes, root)
