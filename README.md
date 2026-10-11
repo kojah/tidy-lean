@@ -45,7 +45,9 @@ Authored declarations outside the resulting closure are errors. Importing a
 module alone does not connect its declarations to either paper. Missing or
 unsupported source indexes fail the audit. Run `lake build` first to validate
 the source/index content hashes; timestamps alone cannot certify freshness.
-Project source modules not imported by `DeadlockProofs` are reported separately:
+The checker inventories `Support`, `Framework`, `PointsTo` and `DeadlockProofs`
+through the `Proofs` entry point, with a legacy fallback to `DeadlockProofs`.
+Project source modules outside that imported environment are reported separately:
 the checker cannot certify their proof inventory from the imported environment.
 External library declarations are not orphan candidates.
 
