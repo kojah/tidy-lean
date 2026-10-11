@@ -108,7 +108,7 @@ def audit (input : Input) : Except String Json := do
     errors := errors.push s!"{moduleName}: orphaned Lean declarations: {preview}{suffix}"
   for moduleName in missing do
     if !(retainedModules.map Prod.fst).contains moduleName then
-      errors := errors.push s!"{moduleName}: source module is not imported by DeadlockProofs; declaration coverage unknown"
+      errors := errors.push s!"{moduleName}: source module is not imported by the proof entry point; declaration coverage unknown"
   let unused := orphans.filter fun name => (dependents[name]?.getD {}).isEmpty
   let allNames := sorted (input.nodes.map (·.name))
   return Json.mkObj [

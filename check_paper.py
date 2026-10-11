@@ -123,7 +123,8 @@ def probe_source(names, inventory):
     """The probe dumping names and, with inventory, the inventory of every
     project module (True) or of the modules listed."""
     dump = Path(HERE, 'Dump.lean').read_text().replace('import Lean\n', '')
-    source = 'import DeadlockProofs\n' + dump + '\n'
+    entry = 'Proofs' if Path(PROOFS, 'Proofs.lean').is_file() else 'DeadlockProofs'
+    source = f'import {entry}\n' + dump + '\n'
     if names:
         source += '#paper_dump ' + ' '.join(sorted(names)) + '\n'
     if inventory is True:

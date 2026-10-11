@@ -84,11 +84,11 @@ def source_inventory(proofs, modules, nodes, index_root=None):
     return enriched
 
 
-PROJECT_LIBRARIES = ('DeadlockProofs', 'Support')
+PROJECT_LIBRARIES = ('Proofs', 'DeadlockProofs', 'PointsTo', 'Framework', 'Support')
 
 
 def source_modules(proofs):
-    """The project's modules: both libraries, with their roots."""
+    """All authored proof libraries and the complete-inventory root."""
     modules = set()
     for library in PROJECT_LIBRARIES:
         if Path(proofs, library + '.lean').is_file():

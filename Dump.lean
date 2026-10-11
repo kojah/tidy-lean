@@ -35,8 +35,8 @@ elab "#paper_inventory" ms:ident* : command => do
   let wanted := ms.map (·.getId)
   let modules := env.header.moduleNames.filter fun name =>
     if wanted.isEmpty then
-      name.toString == "DeadlockProofs" || name.toString.startsWith "DeadlockProofs." ||
-        name.toString == "Support" || name.toString.startsWith "Support."
+      #["Proofs", "DeadlockProofs", "PointsTo", "Framework", "Support"].any fun root =>
+        name.toString == root || name.toString.startsWith (root ++ ".")
     else wanted.contains name
   -- Printed directly: six megabytes through the message log took ten
   -- seconds more than through standard output.
