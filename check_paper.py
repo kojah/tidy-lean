@@ -76,7 +76,7 @@ def paper_results():
     from paper_sources import collect
     root = Path(PROOFS).parent / 'paper'
     return cached_json('results', manuscript_fingerprint(),
-                       lambda: collect([root / 'lockdoctor/deadlock.tex', root / 'heap-analysis/heap.tex'], digest))
+                       lambda: collect([root / 'lockdoc/deadlock.tex', root / 'heap-analysis/heap.tex'], digest))
 
 
 def proofs_fingerprint():
@@ -402,7 +402,7 @@ def main():
     from paper_sources import review_receipts, review_errors
     base = Path(PROOFS).parent
     current_reviews = cached_json('reviews', manuscript_fingerprint(), lambda: review_receipts(
-        [base / 'paper/lockdoctor/deadlock.tex', base / 'paper/heap-analysis/heap.tex'], base, digest))
+        [base / 'paper/lockdoc/deadlock.tex', base / 'paper/heap-analysis/heap.tex'], base, digest))
     recorded_reviews = json.load(open(REVIEW)) if os.path.exists(REVIEW) else {}
     if a.review:
         if problems:
@@ -432,7 +432,7 @@ def main():
           "Displays inside semantic blocks inherit their evidence.")
     if a.math_report:
         from paper_sources import math_coverage
-        entries = [base / 'paper/lockdoctor/deadlock.tex', base / 'paper/heap-analysis/heap.tex']
+        entries = [base / 'paper/lockdoc/deadlock.tex', base / 'paper/heap-analysis/heap.tex']
         report = math_coverage(entries, results)
         print(f"All display math: {len(report)} blocks")
         for block in report:
