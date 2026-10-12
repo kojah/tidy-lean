@@ -36,8 +36,8 @@ def options(text: str) -> dict[str, str]:
     title = result.get('title', '')
     if not title or any(not (c.isalnum() or c in ' ,-()') for c in title):
         raise ValueError('leanformula requires a plain-text title')
-    if result.get('layout', 'auto') not in {'auto', 'multiline'}:
-        raise ValueError('formula layout must be auto or multiline')
+    if result.get('layout', 'auto') not in {'auto', 'multiline', 'part'}:
+        raise ValueError('formula layout must be auto, multiline or part')
     seen = set()
     for pair in result.get('names', '').split():
         parts = pair.split('=')
